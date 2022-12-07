@@ -1,20 +1,108 @@
 import numpy as np
 
+def Din99oLab2Lab(DIN99Lab):
+    """
+    Transforms CIELab to more visually uniform color space Din99o
+    """
+    # Hilfsfunktion for din99o to lab Trafo
+    Kch=1
+    Kc=1
 
+    # DIN99 Buntheit
+    C9 = np.sqrt(np.power(DIN99Lab[:,1], 2) + np.power(DIN99Lab[:,2],2))
 
+    # Hilfsvariable für Bunttonwinkel
+    h9_ef = np.mod(np.arctan2(DIN99Lab[:,2], DIN99Lab[:,1])*180/ np.pi, 360)
+
+    # DIN99 Bunttonwinkel
+    h9 = (h9_ef - 26)/ 180* np.pi
+    #% Hilfsvariable f�r Buntheit
+    G = (np.exp(0.0435* C9* Kch) - 1)/ 0.075
+    #% Hilfsvariable f�r Rotheit
+    e = G* np.cos(h9)
+    # Hilfsvariable f�r Gelbheit
+    f = G*np.sin(h9)
+
+    a = np.cos(26 * np.pi / 180)* e - f/ 0.83*np.sin(26 * np.pi / 180)
+    b = np.sin(26 * np.pi / 180)* e + f/ 0.83* np.cos(26 * np.pi / 180)
+    C = np.sqrt(np.power(a, 2) + np.power(b,2))
+
+    h_r = np.arctan2(b, a)* 180/ np.pi
+    L = (np.exp(DIN99Lab[:,0]/ 303.67) -1)/ 0.0039
+    return np.concatenate([[L], [a], [b]], axis = 0).T
+
+def Lab2Din99oLab(Lab):
+    """
+    Transforms Din99o color space to CIELab color space
+    """
+    # Hilfsfunktion for lab to din99o Trafo
+    Kch=1
+    Ke=1
+    # DIN99 lightness optimized
+    L9o = 303.67*(np.log(1+0.0039*Lab[:,0]))
+    # Hilfsvariablen fuer Rotheit
+    eo = np.cos(26*np.pi/180)*Lab[:,1] + np.sin(26*np.pi/180)*Lab[:,2]
+    # Hilfsvariablen fuer Gelbheit
+    fo = -0.83*np.sin(26*np.pi/180)*Lab[:,1] + 0.83*np.cos(26*np.pi/180)*Lab[:,2]
+    # Hilfsvariablen fuer Buntheit
+    Go = np.sqrt(np.power(eo,2) + np.power(fo,2))
+    # Hilfsvariable fuer Bunttonwinkel - fuenf Faelle
+    h_ef = np.arctan2(fo,eo)
+
+    # DIN99 Variable
+    h9o = h_ef*180/np.pi + 26
+    # DIN99 Buntheit
+    C9o = (np.log(1+0.075*Go))/0.0435*Kch*Ke
+    # DIN99 Rotheit
+    a9o = C9o*np.cos(h9o*np.pi/180)
+    b9o = C9o*np.sin(h9o*np.pi/180)
+    return np.concatenate([[L9o], [a9o], [b9o]], axis = 0).T
 
 
 ######### soweit fertig ##########
-def XYZ2sRGB(Lab):
+def XYZ2AdobeRGB(XYZ):
     """
-    transformation from CIELab to XYZ via 3x3 matrix
+    Transforms from XYZ to AdobeRGB via 3x3 matrix and gamma correction of 2.2
+    """
+    M_inv = np.array([[2.0413690, -0.5649464, -0.3446944],
+                      [-0.9692660, 1.8760108, 0.0415560],
+                      [0.0134474, -0.1183897, 1.0154096]])
+    AdobeRGB = np.matmul(M_inv, XYZ.T).T
+    AdobeRGB = AdobeRGB**(1/2.2)
+    return AdobeRGB
+
+def AdobeRGB2XYZ(RGB):
+    """
+    Transforms AdobeRGB to XYZ via gamma correction of 2.2 and 3x3 Matrix
+    """
+    XYZ = RGB**2.2
+    M = np.array([[0.5767309, 0.1855540, 0.1881852],
+                  [0.2973769, 0.6273491, 0.0752741],
+                  [0.0270343, 0.0706872, 0.9911085]])
+    XYZ = np.matmul(M, XYZ.T).T
+    return XYZ
+
+def XYZ2sRGB(XYZ):
+    """
+    transformation from XYZ to sRGB via 3x3 matrix and sRGB Companding
     """
     M_inv = np.array([[3.2404542, -1.5371385, -0.4985314],
                       [-0.9692660, 1.8760108,  0.0415560], 
                       [0.0556434, -0.2040259, 1.0572252]])
-    rgb = np.matmul(M_inv, Lab.T).T
-    srgb = gamma_correction(rgb)
+    rgb = np.matmul(M_inv, XYZ.T).T
+    srgb = sRGB_companding(rgb)
     return srgb
+
+def sRGB2XYZ(sRGB):
+    """
+    Transforms sRGB to XYZ via inverse sRGG Companding and 3x3 Matrix
+    """
+    rgb = inverse_sRGB_companding(sRGB)
+    M = np.array([[0.4124564, 0.3575761, 0.1804375],
+                  [0.2126729, 0.7151522, 0.0721750],
+                  [0.0193339, 0.1191920, 0.9503041]])
+    XYZ = np.matmul(M, rgb.T).T
+    return XYZ
 
 def XYZ2Lab(xyz, obs = '2', ill = 'd50'):
     """
@@ -52,8 +140,47 @@ def XYZ2Lab(xyz, obs = '2', ill = 'd50'):
 
     return labs
 
-def Spectrum2XYZ(spec, obs = '2', ill = 'd50'):
+def Lab2XYZ(Lab, obs='2', ill='d50'):
+    """
+    Converts numpy arrays from CIELab color space to XYZ Color Space
+    """
+    CIE_E = 216.0 / 24389.0
+    CIE_K = 24389.0 / 27.0
+    ILLUMINANTS = {
+        # 2 Degree Functions
+        "2": {
+            "d50": (0.96422, 1.00000, 0.82521),
+            "d65": (0.95047, 1.00000, 1.08883),
+        },
+        # 10 Degree Functions
+        "10": {
+            "d50": (0.9672, 1.000, 0.8143),
+            "d65": (0.9481, 1.000, 1.073),
+        },
+    }
+    illum = ILLUMINANTS[obs][ill]
+
+    xyz = Lab.copy()
+    xyz[:,1] = (Lab[:,0] + 16.0) / 116
+    xyz[:,0] = Lab[:,1]/500. + xyz[:,1]
+    xyz[:,2] = xyz[:,1] - Lab[:,2]/200.
+
+    condition = xyz**3 > CIE_E
+    xyz[condition] = xyz[condition]**3
+    xyz[~condition] = (xyz[~condition] - 16/116.) / 7.787
+
+    xyz[:,0] = xyz[:,0]*illum[0]
+    xyz[:,1] = xyz[:,1]*illum[1]
+    xyz[:,2] = xyz[:,2]*illum[2]
     
+    return xyz
+
+def Spectrum2XYZ(spec, obs = '2', ill = 'd50'):
+    """
+    Converts Spectral Reflectance to XYZ
+
+
+    """
     if obs == '2':
         std_obs = STDOBSERV('2')
     elif obs == '10':
@@ -79,14 +206,27 @@ def Spectrum2XYZ(spec, obs = '2', ill = 'd50'):
     
     return res 
 
-def gamma_correction(rgb):
-    srgb = rgb
-    for idx, value in enumerate(rgb):
+def sRGB_companding(rgb):
+    shape = rgb.shape
+    srgb = rgb.ravel()
+    for idx, value in enumerate(rgb.ravel()):
         if value <= 0.0031308:
             srgb[idx] = 12.92*value
         else:
             srgb[idx] = 1.055*(value**(1/2.4)) - 0.055
+    srgb = srgb.reshape(shape)
     return srgb
+
+def inverse_sRGB_companding(srgb):
+    shape = srgb.shape
+    rgb = srgb.ravel()
+    for idx, value in enumerate(rgb):
+        if value <= 0.04045:
+            rgb[idx] = value/12.92
+        else:
+            rgb[idx] = ((value + 0.055)/1.055)**2.4
+    rgb = rgb.reshape(shape)
+    return rgb
 
 def STDOBSERV(degree):
     if degree == '2':
