@@ -1,4 +1,6 @@
+import torch
 import numpy as np
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def Din99oLab2Lab(DIN99Lab):
     """
@@ -9,27 +11,27 @@ def Din99oLab2Lab(DIN99Lab):
     Kc=1
 
     # DIN99 Buntheit
-    C9 = np.sqrt(np.power(DIN99Lab[:,1], 2) + np.power(DIN99Lab[:,2],2))
+    C9 = torch.sqrt(torch.pow(DIN99Lab[:,1], 2).float() + torch.pow(DIN99Lab[:,2],2).float())
 
     # Hilfsvariable für Bunttonwinkel
-    h9_ef = np.mod(np.arctan2(DIN99Lab[:,2], DIN99Lab[:,1])*180/ np.pi, 360)
+    h9_ef = torch.fmod(torch.atan2(DIN99Lab[:,2], DIN99Lab[:,1])*180/ np.pi, 360)
 
     # DIN99 Bunttonwinkel
     h9 = (h9_ef - 26)/ 180* np.pi
     #% Hilfsvariable f�r Buntheit
-    G = (np.exp(0.0435* C9* Kch) - 1)/ 0.075
+    G = (torch.exp(0.0435* C9* Kch) - 1)/ 0.075
     #% Hilfsvariable f�r Rotheit
-    e = G* np.cos(h9)
+    e = G* torch.cos(h9)
     # Hilfsvariable f�r Gelbheit
-    f = G*np.sin(h9)
+    f = G*torch.sin(h9)
 
-    a = np.cos(26 * np.pi / 180)* e - f/ 0.83*np.sin(26 * np.pi / 180)
-    b = np.sin(26 * np.pi / 180)* e + f/ 0.83* np.cos(26 * np.pi / 180)
-    C = np.sqrt(np.power(a, 2) + np.power(b,2))
+    a = torch.cos(torch.tensor(26 * np.pi / 180))* e - f/ 0.83*torch.sin(torch.tensor(26 * np.pi / 180))
+    b = torch.sin(torch.tensor(26 * np.pi / 180))* e + f/ 0.83* torch.cos(torch.tensor(26 * np.pi / 180))
+    C = torch.sqrt(torch.pow(a, 2) + torch.pow(b,2))
 
-    h_r = np.arctan2(b, a)* 180/ np.pi
-    L = (np.exp(DIN99Lab[:,0]/ 303.67) -1)/ 0.0039
-    return np.concatenate([[L], [a], [b]], axis = 0).T
+    h_r = torch.atan2(b, a)* 180/ np.pi
+    L = (torch.exp(DIN99Lab[:,0]/ 303.67) -1)/ 0.0039
+    return torch.cat([L.reshape((1,-1)), a.reshape((1,-1)), b.reshape(1,-1)], axis = 0).T
 
 def Lab2Din99oLab(Lab):
     """
@@ -39,33 +41,33 @@ def Lab2Din99oLab(Lab):
     Kch=1
     Ke=1
     # DIN99 lightness optimized
-    L9o = 303.67*(np.log(1+0.0039*Lab[:,0]))
+    L9o = 303.67*(torch.log(1+0.0039*Lab[:,0]))
     # Hilfsvariablen fuer Rotheit
-    eo = np.cos(26*np.pi/180)*Lab[:,1] + np.sin(26*np.pi/180)*Lab[:,2]
+    eo = torch.cos(torch.tensor(26*np.pi/180))*Lab[:,1] + torch.sin(torch.tensor(26*np.pi/180))*Lab[:,2]
     # Hilfsvariablen fuer Gelbheit
-    fo = -0.83*np.sin(26*np.pi/180)*Lab[:,1] + 0.83*np.cos(26*np.pi/180)*Lab[:,2]
+    fo = -0.83*torch.sin(torch.tensor(26*np.pi/180))*Lab[:,1] + 0.83*torch.cos(torch.tensor(26*np.pi/180))*Lab[:,2]
     # Hilfsvariablen fuer Buntheit
-    Go = np.sqrt(np.power(eo,2) + np.power(fo,2))
+    Go = torch.sqrt(torch.pow(eo,2) + np.power(fo,2))
     # Hilfsvariable fuer Bunttonwinkel - fuenf Faelle
-    h_ef = np.arctan2(fo,eo)
+    h_ef = torch.atan2(fo,eo)
 
     # DIN99 Variable
     h9o = h_ef*180/np.pi + 26
     # DIN99 Buntheit
-    C9o = (np.log(1+0.075*Go))/0.0435*Kch*Ke
+    C9o = (torch.log(1+0.075*Go))/0.0435*Kch*Ke
     # DIN99 Rotheit
-    a9o = C9o*np.cos(h9o*np.pi/180)
-    b9o = C9o*np.sin(h9o*np.pi/180)
-    return np.concatenate([[L9o], [a9o], [b9o]], axis = 0).T
+    a9o = C9o*torch.cos(h9o*np.pi/180)
+    b9o = C9o*torch.sin(h9o*np.pi/180)
+    return torch.cat([L9o.reshape((1,-1)), a9o.reshape((1,-1)), b9o.reshape((1,-1))], axis = 0).T
 
 def XYZ2AdobeRGB(XYZ):
     """
     Transforms from XYZ to AdobeRGB via 3x3 matrix and gamma correction of 2.2
     """
-    M_inv = np.array([[2.0413690, -0.5649464, -0.3446944],
+    M_inv = torch.tensor([[2.0413690, -0.5649464, -0.3446944],
                       [-0.9692660, 1.8760108, 0.0415560],
-                      [0.0134474, -0.1183897, 1.0154096]])
-    AdobeRGB = np.matmul(M_inv, XYZ.T).T
+                      [0.0134474, -0.1183897, 1.0154096]]).float()
+    AdobeRGB = torch.matmul(M_inv, XYZ.float().T).T
     AdobeRGB = AdobeRGB**(1/2.2)
     return AdobeRGB
 
@@ -73,8 +75,8 @@ def AdobeRGB2XYZ(RGB):
     """
     Transforms AdobeRGB to XYZ via gamma correction of 2.2 and 3x3 Matrix
     """
-    XYZ = RGB**2.2
-    M = np.array([[0.5767309, 0.1855540, 0.1881852],
+    XYZ = RGB.float()**2.2
+    M = torch.tensor([[0.5767309, 0.1855540, 0.1881852],
                   [0.2973769, 0.6273491, 0.0752741],
                   [0.0270343, 0.0706872, 0.9911085]])
     XYZ = np.matmul(M, XYZ.T).T
@@ -84,10 +86,10 @@ def XYZ2sRGB(XYZ):
     """
     transformation from XYZ to sRGB via 3x3 matrix and sRGB Companding
     """
-    M_inv = np.array([[3.2404542, -1.5371385, -0.4985314],
+    M_inv = torch.tensor([[3.2404542, -1.5371385, -0.4985314],
                       [-0.9692660, 1.8760108,  0.0415560], 
                       [0.0556434, -0.2040259, 1.0572252]])
-    rgb = np.matmul(M_inv, XYZ.T).T
+    rgb = torch.matmul(M_inv, XYZ.float().T).T
     srgb = sRGB_companding(rgb)
     return srgb
 
@@ -95,18 +97,18 @@ def sRGB2XYZ(sRGB):
     """
     Transforms sRGB to XYZ via inverse sRGG Companding and 3x3 Matrix
     """
-    rgb = inverse_sRGB_companding(sRGB)
-    M = np.array([[0.4124564, 0.3575761, 0.1804375],
+    rgb = inverse_sRGB_companding(sRGB.float())
+    M = torch.tensor([[0.4124564, 0.3575761, 0.1804375],
                   [0.2126729, 0.7151522, 0.0721750],
                   [0.0193339, 0.1191920, 0.9503041]])
-    XYZ = np.matmul(M, rgb.T).T
+    XYZ = torch.matmul(M, rgb.T).T
     return XYZ
 
 def XYZ2Lab(xyz, obs = '2', ill = 'd50'):
     """
     Converts XYZ to Lab.
     """
-    labs = xyz.copy()
+    labs = xyz.clone()
     
     CIE_E = 216.0 / 24389.0
     ILLUMINANTS = {
@@ -131,7 +133,7 @@ def XYZ2Lab(xyz, obs = '2', ill = 'd50'):
     labs[condition] = labs[condition]**(1./3.)
     labs[~condition] = 7.787*labs[~condition] + 16./116.
 
-    temp = labs.copy()
+    temp = labs.clone()
     labs[:,0] = 116.*temp[:,1] - 16.
     labs[:,1] = 500.*(temp[:,0] - temp[:,1])
     labs[:,2] = 200.*(temp[:,1] - temp[:,2])
@@ -158,8 +160,9 @@ def Lab2XYZ(Lab, obs='2', ill='d50'):
     }
     illum = ILLUMINANTS[obs][ill]
 
-    xyz = Lab.copy()
-    xyz[:,1] = (Lab[:,0] + 16.0) / 116
+    #Lab = Lab.float()
+    xyz = Lab.float().clone()
+    xyz[:,1] = (Lab[:,0] + 16.0) / 116.
     xyz[:,0] = Lab[:,1]/500. + xyz[:,1]
     xyz[:,2] = xyz[:,1] - Lab[:,2]/200.
 
@@ -190,22 +193,22 @@ def Spectrum2XYZ(spec, obs = '2', ill = 'd50'):
     else:
         raise "Reference Illumination has to be 'd50' or 'd65'"
         
-    coefs = std_obs.copy()
+    coefs = std_obs.float().clone()
     coefs[:,0] = std_obs[:,0]*ref_ill
     coefs[:,1] = std_obs[:,1]*ref_ill
     coefs[:,2] = std_obs[:,2]*ref_ill
     
     teiler = coefs[:,1].sum()
     
-    res = np.matmul(spec, coefs)
+    res = torch.matmul(spec.float(), coefs)
     res /= teiler
     
     return res 
 
 def sRGB_companding(rgb):
     shape = rgb.shape
-    srgb = rgb.ravel()
-    for idx, value in enumerate(rgb.ravel()):
+    srgb = rgb.reshape(-1)
+    for idx, value in enumerate(rgb.reshape(-1)):
         if value <= 0.0031308:
             srgb[idx] = 12.92*value
         else:
@@ -215,7 +218,7 @@ def sRGB_companding(rgb):
 
 def inverse_sRGB_companding(srgb):
     shape = srgb.shape
-    rgb = srgb.ravel()
+    rgb = srgb.reshape(-1)
     for idx, value in enumerate(rgb):
         if value <= 0.04045:
             rgb[idx] = value/12.92
@@ -226,7 +229,7 @@ def inverse_sRGB_companding(srgb):
 
 def STDOBSERV(degree):
     if degree == '2':
-        return np.array([[0.000000e+00, 0.000000e+00, 0.000000e+00],
+        return torch.tensor([[0.000000e+00, 0.000000e+00, 0.000000e+00],
                        [0.000000e+00, 0.000000e+00, 0.000000e+00],
                        [1.299000e-04, 3.917000e-06, 6.061000e-04],
                        [4.149000e-04, 1.239000e-05, 1.946000e-03],
@@ -277,7 +280,7 @@ def STDOBSERV(degree):
                        [2.522525e-06, 9.109300e-07, 0.000000e+00],
                        [1.251141e-06, 4.518100e-07, 0.000000e+00]])
     elif degree == '10':
-        return np.array([[0.00000e+00, 0.00000e+00, 0.00000e+00],
+        return torch.tensor([[0.00000e+00, 0.00000e+00, 0.00000e+00],
                        [0.00000e+00, 0.00000e+00, 0.00000e+00],
                        [1.22200e-07, 1.33980e-08, 5.35027e-07],
                        [5.95860e-06, 6.51100e-07, 2.61437e-05],
@@ -330,7 +333,7 @@ def STDOBSERV(degree):
 
 def REFERENCE_ILLUM(light):
     if light == 'd50':
-        return np.array((17.92, 20.98, 23.91, 25.89, 24.45,
+        return torch.tensor((17.92, 20.98, 23.91, 25.89, 24.45,
                          29.83, 49.25, 56.45, 59.97, 57.76,
                          74.77, 87.19, 90.56, 91.32, 95.07,
                          91.93, 95.70, 96.59, 97.11, 102.09,
@@ -341,7 +344,7 @@ def REFERENCE_ILLUM(light):
                          92.63, 78.27, 57.72, 82.97, 78.31,
                          79.59, 73.44, 63.95, 70.81, 74.48))
     elif light == 'd65':
-        return np.array((39.90, 44.86, 46.59, 51.74, 49.92,
+        return torch.tensor((39.90, 44.86, 46.59, 51.74, 49.92,
                          54.60, 82.69, 91.42, 93.37, 86.63,
                          104.81, 116.96, 117.76, 114.82, 115.89,
                          108.78, 109.33, 107.78, 104.78, 107.68,
